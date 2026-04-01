@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Camera App</title>
+</head>
+<body style="margin:0;background:black;text-align:center;color:white;font-family:sans-serif">
+
+<h2>Камера</h2>
+
+<video id="video" autoplay playsinline style="width:100%"></video>
+
+<br><br>
+
+<button onclick="start()" style="padding:15px;font-size:18px">Включить</button>
+
+<script>
+async function start() {
+  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+  document.getElementById('video').srcObject = stream;
+}
+</script>
+
+</body>
+</html>
