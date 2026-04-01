@@ -13,7 +13,7 @@
 <input id="white" placeholder="Белые"><br><br>
 <input id="black" placeholder="Чёрные"><br><br>
 
-<input id="server" value="http://192.168.1.100:8000/upload" style="width:90%"><br><br>
+<input id="server" value="http://192.168.2.51:8000/upload" style="width:90%"><br><br>
 
 <video id="video" autoplay playsinline style="width:100%"></video>
 
@@ -28,14 +28,14 @@
 <canvas id="canvas" style="display:none"></canvas>
 
 <script>
-let lastImage = null;
+let lastBlob = null;
 
 async function start() {
   const stream = await navigator.mediaDevices.getUserMedia({ video: true });
   document.getElementById("video").srcObject = stream;
 }
 
-function photo() {
+async function photo() {
   const video = document.getElementById("video");
   const canvas = document.getElementById("canvas");
 
@@ -45,29 +45,21 @@ function photo() {
   const ctx = canvas.getContext("2d");
   ctx.drawImage(video, 0, 0);
 
-  lastImage = canvas.toDataURL("image/jpeg");
+  lastBlob = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg"));
 
   document.getElementById("status").innerText = "Фото сделано";
 }
 
 async function send() {
-  if (!lastImage) {
+  if (!lastBlob) {
     alert("Сначала сделай фото");
     return;
   }
 
-  const blob = await (await fetch(lastImage)).blob();
-
-  const form = new FormData();
-  form.append("image", blob);
-  form.append("board", document.getElementById("board").value);
-  form.append("white", document.getElementById("white").value);
-  form.append("black", document.getElementById("black").value);
-
   try {
     await fetch(document.getElementById("server").value, {
       method: "POST",
-      body: form
+      body: lastBlob
     });
 
     document.getElementById("status").innerText = "Отправлено на компьютер";
