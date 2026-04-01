@@ -1,7 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Camera, CameraOff, RefreshCcw, Download, Grid3X3, Save, Trash2, MonitorSmartphone } from "lucide-react";
+import {
+  Camera,
+  CameraOff,
+  RefreshCcw,
+  Download,
+  Grid3X3,
+  Save,
+  Trash2,
+  MonitorSmartphone,
+  Send,
+  Wifi,
+} from "lucide-react";
 
-function ActionButton({ onClick, children, tone = "default" }) {
+function ActionButton({ onClick, children, tone = "default", disabled = false }) {
   const toneClass = {
     default: "bg-slate-700 hover:bg-slate-600 text-white",
     green: "bg-emerald-500 hover:bg-emerald-400 text-slate-950",
@@ -9,12 +20,14 @@ function ActionButton({ onClick, children, tone = "default" }) {
     blue: "bg-sky-500 hover:bg-sky-400 text-slate-950",
     purple: "bg-violet-500 hover:bg-violet-400 text-white",
     cyan: "bg-cyan-500 hover:bg-cyan-400 text-slate-950",
+    amber: "bg-amber-400 hover:bg-amber-300 text-slate-950",
   }[tone];
 
   return (
     <button
       onClick={onClick}
-      className={`h-12 rounded-2xl px-4 text-sm md:text-base font-semibold transition ${toneClass}`}
+      disabled={disabled}
+      className={`h-12 rounded-2xl px-4 text-sm md:text-base font-semibold transition ${toneClass} ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
     >
       {children}
     </button>
@@ -50,7 +63,9 @@ export default function CameraPhoneApp() {
   const [boardNumber, setBoardNumber] = useState("");
   const [whitePlayer, setWhitePlayer] = useState("");
   const [blackPlayer, setBlackPlayer] = useState("");
+  const [serverUrl, setServerUrl] = useState("http://192.168.1.100:8000/upload");
   const [snapshots, setSnapshots] = useState([]);
+  const [isUploading, setIsUploading] = useState(false);
 
   const boardMeta = useMemo(() => {
     const board = boardNumber || "—";
@@ -204,6 +219,7 @@ export default function CameraPhoneApp() {
       boardNumber: boardNumber || "—",
       whitePlayer: whitePlayer || "—",
       blackPlayer: blackPlayer || "—",
+      uploaded: false,
     };
 
     setPhotoUrl(dataUrl);
@@ -221,6 +237,58 @@ export default function CameraPhoneApp() {
     setStatus(gridEnabled ? "Сетка выключена" : "Сетка включена");
   }, [gridEnabled]);
 
+  const dataUrlToBlob = useCallback(async (dataUrl) => {
+    const response = await fetch(dataUrl);
+    return response.blob();
+  }, []);
+
+  const uploadLatestSnapshot = useCallback(async () => {
+    if (!serverUrl.trim()) {
+      setStatus("Укажи адрес компьютера для отправки");
+      return;
+    }
+
+    if (snapshots.length === 0) {
+      setStatus("Сначала сохрани снимок в серию");
+      return;
+    }
+
+    const latest = snapshots[0];
+
+    try {
+      setIsUploading(true);
+      setStatus("Отправляю снимок на компьютер...");
+
+      const blob = await dataUrlToBlob(latest.image);
+      const formData = new FormData();
+      formData.append("image", blob, `board-${latest.boardNumber}-shot-${latest.id}.jpg`);
+      formData.append("boardNumber", latest.boardNumber);
+      formData.append("whitePlayer", latest.whitePlayer);
+      formData.append("blackPlayer", latest.blackPlayer);
+      formData.append("createdAt", latest.createdAt);
+
+      const response = await fetch(serverUrl, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Сервер ответил ошибкой ${response.status}`);
+      }
+
+      setSnapshots((prev) =>
+        prev.map((shot) =>
+          shot.id === latest.id ? { ...shot, uploaded: true } : shot
+        )
+      );
+      setStatus("Снимок отправлен на компьютер");
+    } catch (error) {
+      setStatus(`Не удалось отправить: ${error?.message || "ошибка сети"}`);
+    } finally {
+      setIsUploading(false);
+    }
+  }, [dataUrlToBlob, serverUrl, snapshots]);
+
   useEffect(() => {
     return () => releaseStream();
   }, [releaseStream]);
@@ -231,7 +299,7 @@ export default function CameraPhoneApp() {
         <div className="text-center space-y-2">
           <h1 className="text-3xl md:text-5xl font-bold tracking-tight">Режим доски</h1>
           <p className="text-slate-300 text-sm md:text-base">
-            Телефон только снимает доску, а анализ позиции выполняет отдельный компьютер.
+            Телефон снимает доску, а отдельный компьютер принимает снимки и делает анализ.
           </p>
         </div>
 
@@ -266,6 +334,22 @@ export default function CameraPhoneApp() {
             <div className="rounded-2xl bg-slate-800/80 p-4 text-sm text-slate-200 leading-6">
               <div className="font-semibold text-white mb-1">Текущая связка</div>
               <div>{boardMeta}</div>
+            </div>
+
+            <div className="rounded-2xl bg-slate-800/80 p-4 text-sm text-slate-200 leading-6 space-y-3">
+              <div className="flex items-center gap-2 text-white font-semibold">
+                <Wifi className="w-4 h-4" />
+                Компьютер для анализа
+              </div>
+              <Field
+                label="Адрес сервера"
+                value={serverUrl}
+                onChange={(e) => setServerUrl(e.target.value)}
+                placeholder="http://192.168.1.100:8000/upload"
+              />
+              <div className="text-slate-400 text-xs leading-5">
+                Сюда телефон отправляет снимок по Wi‑Fi. Анализ делает не телефон, а отдельный компьютер в той же сети.
+              </div>
             </div>
           </div>
 
@@ -313,6 +397,9 @@ export default function CameraPhoneApp() {
               <ActionButton onClick={saveSnapshot} tone="green">
                 <span className="inline-flex items-center gap-2"><Save className="w-4 h-4" />В серию</span>
               </ActionButton>
+              <ActionButton onClick={uploadLatestSnapshot} tone="amber" disabled={isUploading}>
+                <span className="inline-flex items-center gap-2"><Send className="w-4 h-4" />{isUploading ? "Отправка..." : "На компьютер"}</span>
+              </ActionButton>
               <ActionButton onClick={clearSnapshots} tone="red">
                 <span className="inline-flex items-center gap-2"><Trash2 className="w-4 h-4" />Очистить</span>
               </ActionButton>
@@ -325,7 +412,7 @@ export default function CameraPhoneApp() {
                 {resolution ? ` • ${resolution}` : ""}
               </div>
               <div className="mt-1 text-slate-300">
-                <span className="font-semibold">Обработка:</span> отдельный компьютер, не телефон
+                <span className="font-semibold">Обработка:</span> отдельный компьютер по Wi‑Fi
               </div>
             </div>
           </div>
@@ -354,7 +441,7 @@ export default function CameraPhoneApp() {
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <div className="text-xl font-semibold">Серия снимков</div>
-              <div className="text-sm text-slate-300">Сохраняй кадры на телефоне, а затем передавай их на отдельный компьютер для анализа.</div>
+              <div className="text-sm text-slate-300">Снимки копятся на телефоне, затем отправляются на отдельный компьютер для анализа.</div>
             </div>
             <div className="text-sm text-slate-300">Всего: {snapshots.length}</div>
           </div>
@@ -370,6 +457,9 @@ export default function CameraPhoneApp() {
                     <div className="font-semibold">Доска {shot.boardNumber}</div>
                     <div className="text-slate-300">{shot.whitePlayer} vs {shot.blackPlayer}</div>
                     <div className="text-slate-400">{shot.createdAt}</div>
+                    <div className={`text-xs font-semibold ${shot.uploaded ? "text-emerald-400" : "text-amber-300"}`}>
+                      {shot.uploaded ? "Отправлено на компьютер" : "Ожидает отправки"}
+                    </div>
                     <a
                       href={shot.image}
                       download={`board-${shot.boardNumber}-shot-${shot.id}.jpg`}
