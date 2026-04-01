@@ -1,25 +1,376 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Camera App</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chess Camera App</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #081225;
+      color: white;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 16px;
+    }
+
+    h1 {
+      margin: 10px 0 8px;
+      font-size: 32px;
+    }
+
+    p {
+      margin: 0 0 18px;
+      color: #b9c7df;
+      font-size: 15px;
+    }
+
+    .wrap {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    .video-box {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: black;
+      border-radius: 22px;
+      overflow: hidden;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      background: black;
+    }
+
+    .grid-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      display: none;
+      background-image:
+        linear-gradient(to right, rgba(0,255,255,0.35) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(0,255,255,0.35) 1px, transparent 1px);
+      background-size: 12.5% 12.5%;
+    }
+
+    .grid-overlay.active {
+      display: block;
+    }
+
+    .grid-border {
+      position: absolute;
+      top: 10%;
+      left: 15%;
+      width: 70%;
+      height: 80%;
+      border: 2px solid rgba(0,255,255,0.75);
+      border-radius: 10px;
+      box-shadow: 0 0 20px rgba(0,255,255,0.2);
+      display: none;
+      pointer-events: none;
+    }
+
+    .grid-border.active {
+      display: block;
+    }
+
+    .buttons {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    button {
+      border: none;
+      border-radius: 16px;
+      padding: 15px 14px;
+      font-size: 17px;
+      font-weight: 700;
+      color: white;
+      cursor: pointer;
+    }
+
+    .green { background: #22c55e; }
+    .red { background: #ef4444; }
+    .blue { background: #3b82f6; }
+    .purple { background: #8b5cf6; }
+    .cyan { background: #06b6d4; }
+
+    .status {
+      margin-top: 16px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 14px;
+      text-align: left;
+      line-height: 1.5;
+      font-size: 15px;
+    }
+
+    .status strong {
+      color: white;
+    }
+
+    .photo-box {
+      margin-top: 18px;
+      display: none;
+      background: rgba(255,255,255,0.06);
+      border-radius: 20px;
+      padding: 14px;
+    }
+
+    .photo-box.show {
+      display: block;
+    }
+
+    .photo-box img {
+      width: 100%;
+      border-radius: 14px;
+      display: block;
+      margin-bottom: 12px;
+    }
+
+    .download-link {
+      display: inline-block;
+      background: white;
+      color: black;
+      text-decoration: none;
+      font-weight: bold;
+      padding: 12px 18px;
+      border-radius: 14px;
+    }
+
+    canvas {
+      display: none;
+    }
+
+    @media (max-width: 640px) {
+      h1 {
+        font-size: 26px;
+      }
+
+      .buttons {
+        grid-template-columns: 1fr;
+      }
+
+      button {
+        font-size: 16px;
+      }
+    }
+  </style>
 </head>
-<body style="margin:0;background:black;text-align:center;color:white;font-family:sans-serif">
+<body>
+  <div class="wrap">
+    <h1>Шахматная камера</h1>
+    <p>Камера, фото и сетка для наведения на доску</p>
 
-<h2>Камера</h2>
+    <div class="video-box">
+      <video id="video" autoplay playsinline muted></video>
+      <div id="grid" class="grid-overlay"></div>
+      <div id="gridBorder" class="grid-border"></div>
+    </div>
 
-<video id="video" autoplay playsinline style="width:100%"></video>
+    <div class="buttons">
+      <button class="green" onclick="startCamera()">Включить камеру</button>
+      <button class="red" onclick="stopCamera()">Выключить</button>
+      <button class="blue" onclick="switchCamera()">Сменить камеру</button>
+      <button class="purple" onclick="takePhoto()">Сделать фото</button>
+      <button class="cyan" onclick="toggleGrid()">Сетка шахмат</button>
+    </div>
 
-<br><br>
+    <div class="status" id="status">
+      <strong>Статус:</strong> готово к запуску
+      <br>
+      <strong>Камера:</strong> задняя
+    </div>
 
-<button onclick="start()" style="padding:15px;font-size:18px">Включить</button>
+    <div id="photoBox" class="photo-box">
+      <img id="photo" alt="Снимок">
+      <a id="downloadLink" class="download-link" download="chess-photo.jpg">Скачать фото</a>
+    </div>
 
-<script>
-async function start() {
-  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-  document.getElementById('video').srcObject = stream;
-}
-</script>
+    <canvas id="canvas"></canvas>
+  </div>
 
+  <script>
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const statusBox = document.getElementById("status");
+    const photoBox = document.getElementById("photoBox");
+    const photo = document.getElementById("photo");
+    const downloadLink = document.getElementById("downloadLink");
+    const grid = document.getElementById("grid");
+    const gridBorder = document.getElementById("gridBorder");
+
+    let currentStream = null;
+    let facingMode = "environment";
+    let gridEnabled = false;
+
+    function setStatus(text) {
+      statusBox.innerHTML = text;
+    }
+
+    async function startCamera(mode = facingMode) {
+      try {
+        setStatus(
+          "<strong>Статус:</strong> запрашиваю доступ к камере...<br>" +
+          "<strong>Камера:</strong> " + (mode === "environment" ? "задняя" : "передняя")
+        );
+
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          setStatus(
+            "<strong>Статус:</strong> браузер не поддерживает доступ к камере<br>" +
+            "<strong>Камера:</strong> неизвестно"
+          );
+          return;
+        }
+
+        stopCamera(true);
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: { ideal: mode },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          }
+        });
+
+        currentStream = stream;
+        video.srcObject = stream;
+
+        const track = stream.getVideoTracks()[0];
+        const settings = track.getSettings ? track.getSettings() : {};
+        const size = settings.width && settings.height
+          ? ` • ${settings.width}x${settings.height}`
+          : "";
+
+        setStatus(
+          "<strong>Статус:</strong> камера включена<br>" +
+          "<strong>Камера:</strong> " + (mode === "environment" ? "задняя" : "передняя") + size
+        );
+      } catch (error) {
+        if (error.name === "NotAllowedError") {
+          setStatus(
+            "<strong>Статус:</strong> доступ к камере запрещён<br>" +
+            "<strong>Камера:</strong> разреши доступ в браузере"
+          );
+        } else if (error.name === "NotFoundError") {
+          setStatus(
+            "<strong>Статус:</strong> камера не найдена<br>" +
+            "<strong>Камера:</strong> недоступна"
+          );
+        } else if (error.name === "NotReadableError") {
+          setStatus(
+            "<strong>Статус:</strong> камера занята другим приложением<br>" +
+            "<strong>Камера:</strong> недоступна"
+          );
+        } else {
+          setStatus(
+            "<strong>Статус:</strong> ошибка: " + error.message + "<br>" +
+            "<strong>Камера:</strong> " + (mode === "environment" ? "задняя" : "передняя")
+          );
+        }
+      }
+    }
+
+    function stopCamera(silent = false) {
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+        currentStream = null;
+      }
+
+      video.srcObject = null;
+
+      if (!silent) {
+        setStatus(
+          "<strong>Статус:</strong> камера выключена<br>" +
+          "<strong>Камера:</strong> " + (facingMode === "environment" ? "задняя" : "передняя")
+        );
+      }
+    }
+
+    async function switchCamera() {
+      facingMode = facingMode === "environment" ? "user" : "environment";
+      await startCamera(facingMode);
+    }
+
+    function takePhoto() {
+      if (!video.srcObject) {
+        setStatus(
+          "<strong>Статус:</strong> сначала включи камеру<br>" +
+          "<strong>Камера:</strong> " + (facingMode === "environment" ? "задняя" : "передняя")
+        );
+        return;
+      }
+
+      const width = video.videoWidth || 1280;
+      const height = video.videoHeight || 720;
+
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(video, 0, 0, width, height);
+
+      if (gridEnabled) {
+        ctx.strokeStyle = "rgba(0,255,255,0.6)";
+        ctx.lineWidth = 2;
+
+        const boardX = width * 0.15;
+        const boardY = height * 0.10;
+        const boardW = width * 0.70;
+        const boardH = height * 0.80;
+
+        ctx.strokeRect(boardX, boardY, boardW, boardH);
+
+        for (let i = 1; i < 8; i++) {
+          const x = boardX + (boardW / 8) * i;
+          const y = boardY + (boardH / 8) * i;
+
+          ctx.beginPath();
+          ctx.moveTo(x, boardY);
+          ctx.lineTo(x, boardY + boardH);
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(boardX, y);
+          ctx.lineTo(boardX + boardW, y);
+          ctx.stroke();
+        }
+      }
+
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
+      photo.src = dataUrl;
+      downloadLink.href = dataUrl;
+      photoBox.classList.add("show");
+
+      setStatus(
+        "<strong>Статус:</strong> фото сделано<br>" +
+        "<strong>Камера:</strong> " + (facingMode === "environment" ? "задняя" : "передняя")
+      );
+    }
+
+    function toggleGrid() {
+      gridEnabled = !gridEnabled;
+      grid.classList.toggle("active", gridEnabled);
+      gridBorder.classList.toggle("active", gridEnabled);
+
+      setStatus(
+        "<strong>Статус:</strong> " + (gridEnabled ? "сетка включена" : "сетка выключена") + "<br>" +
+        "<strong>Камера:</strong> " + (facingMode === "environment" ? "задняя" : "передняя")
+      );
+    }
+  </script>
 </body>
 </html>
